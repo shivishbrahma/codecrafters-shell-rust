@@ -1,10 +1,9 @@
 #[allow(unused_imports)]
 use std::io::{self, Write};
 
-fn main() {
+fn repl() {
     let mut stdout = io::stdout();
     let stdin = io::stdin();
-
     print!("$ ");
     stdout.flush().unwrap();
 
@@ -13,5 +12,11 @@ fn main() {
     stdin.read_line(&mut input).unwrap();
 
     // Check if command is invalid
-    println!("{}: command not found", input.trim())
+    println!("{}: command not found", input.trim());
+
+    repl();
+}
+
+fn main() {
+    repl();
 }
