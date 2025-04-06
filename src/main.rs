@@ -2,10 +2,16 @@
 use std::io::{self, Write};
 
 fn main() {
+    let mut stdout = io::stdout();
+    let stdin = io::stdin();
+
     print!("$ ");
-    io::stdout().flush().unwrap();
+    stdout.flush().unwrap();
 
     // Wait for user input
     let mut input = String::new();
-    io::stdin().read_line(&mut input).unwrap();
+    stdin.read_line(&mut input).unwrap();
+
+    // Check if command is invalid
+    println!("{}: command not found", input.trim())
 }
