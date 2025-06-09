@@ -1,16 +1,14 @@
-use dirs::home_dir;
-use shlex::split;
 #[allow(unused_imports)]
+use dirs::home_dir;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, BufRead, BufReader, Read, Write};
-use std::path::Path;
 use std::process::{Child, Command, Stdio};
 use std::{env, path};
 
 static BUILTINS: [&str; 6] = ["echo", "exit", "type", "pwd", "cd", "history"];
 
-fn is_executable(path: &Path) -> bool {
+fn is_executable(path: &path::Path) -> bool {
     path.is_file()
         && path
             .metadata()
@@ -18,22 +16,27 @@ fn is_executable(path: &Path) -> bool {
             .unwrap_or(false)
 }
 
-fn load_executables() -> HashSet<String> {
-    let mut executables = HashSet::new();
-    if let Some(path_var) = env::var_os("PATH") {
-        for dir in env::split_paths(&path_var) {
-            if let Ok(entries) = fs::read_dir(dir) {
-                for entry in entries.flatten() {
-                    let path = entry.path();
-                    if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                        if is_executable(&path) {
-                            executables.insert(name.to_string());
-                        }
+fn load_executables() -> HashMap<String, String> {
+    let mut executables: HashMap<String, String> = HashMap::new();
+    let path_var = match env::var("PATH") {
+        Ok(path_val) => path_val,
+        Err(_) => String::new(),
+    };
+    let separator = if cfg!(windows) { ";" } else { ":" };
+
+    for dir in path_var.split(separator) {
+        if let Ok(entries) = fs::read_dir(dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                    if is_executable(&path) && !executables.contains_key(name) {
+                        executables.insert(name.to_string(), path.to_str().unwrap().to_string());
                     }
                 }
             }
         }
     }
+
     executables
 }
 
@@ -140,7 +143,7 @@ fn parse_arguments(
 
 fn parse_command(command: String) {
     let executables = load_executables();
-    let (cmds, args, filename, redirect_mode, has_pipe) = parse_arguments(command);
+    let (cmds, args, _filename, _redirect_mode, _has_pipe) = parse_arguments(command);
 
     for i in 0..cmds.len() {
         let cmd = cmds.get(i).unwrap().to_string();
@@ -149,7 +152,7 @@ fn parse_command(command: String) {
             if let Some(output) = run_builtin(cmd, cmd_args.to_vec()) {
                 print!("{}", output);
             }
-        } else if let Some(path) = executables.get(cmd.as_str()) {
+        } else if let Some(_path) = executables.get(cmd.as_str()) {
             // let mut child = Child::new();
             // let mut stdio = Stdio::new();
         } else {
