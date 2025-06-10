@@ -1,8 +1,7 @@
-#[allow(unused_imports)]
 use dirs::home_dir;
-use std::collections::{HashMap, HashSet, VecDeque};
-use std::fs::{self, File, OpenOptions};
-use std::io::{self, BufRead, BufReader, Read, Write};
+use std::collections::{HashMap, VecDeque};
+use std::fs::{self, OpenOptions};
+use std::io::{self, Write};
 use std::process::{Child, Command, Stdio};
 use std::{env, path};
 
@@ -91,11 +90,15 @@ fn run_builtin(cmd: String, args: Vec<String>) -> Option<String> {
 
 fn parse_arguments(
     command: String,
-) -> (Vec<String>, Vec<Vec<String>>, Option<String>, String, bool) {
+) -> (
+    Vec<String>,
+    Vec<Vec<String>>,
+    Option<(String, String)>,
+    bool,
+) {
     let mut cmd = Vec::new();
     let mut args = Vec::new();
-    let mut filename = None;
-    let mut redirect_mode = String::new();
+    let mut redirection = None;
 
     let command_split: Vec<String> = shlex::split(&command).unwrap_or_default();
     let has_pipe = command_split.contains(&"|".to_string());
@@ -127,8 +130,9 @@ fn parse_arguments(
         while let Some(arg) = part_iter.pop_front() {
             if redir_modes.contains(&arg.as_str()) {
                 if let Some(fname) = part_iter.pop_front() {
-                    filename = Some(fname);
-                    redirect_mode = arg;
+                    // filename = Some(fname);
+                    // redirect_mode = arg;
+                    redirection = Some((arg, fname));
                 }
                 break;
             } else {
@@ -138,42 +142,95 @@ fn parse_arguments(
         args.push(part_args);
     }
 
-    return (cmd, args, filename, redirect_mode, has_pipe);
+    return (cmd, args, redirection, has_pipe);
 }
 
 fn parse_command(command: String) {
-    let executables = load_executables();
-    let (cmds, args, _filename, _redirect_mode, _has_pipe) = parse_arguments(command);
+    let (cmds, args, redirection, _has_pipe) = parse_arguments(command);
+
+    let mut processes: Vec<Child> = vec![];
+    let mut prev_stdout = None;
 
     for i in 0..cmds.len() {
         let cmd = cmds.get(i).unwrap().to_string();
         let cmd_args = args.get(i).unwrap();
+
+        let stdin = prev_stdout
+            .take()
+            .map(Stdio::from)
+            .unwrap_or(Stdio::inherit());
+        let stdout = if i < cmds.len() - 1 {
+            Stdio::piped()
+        } else if let Some((ref mode, ref filename)) = redirection {
+            let file = match mode.as_str() {
+                ">>" => OpenOptions::new().append(true).create(true).open(filename),
+                _ => OpenOptions::new()
+                    .write(true)
+                    .create(true)
+                    .truncate(true)
+                    .open(filename),
+            };
+            match file {
+                Ok(f) => Stdio::from(f),
+                Err(e) => {
+                    eprintln!("Failed to open file {}: {}", filename, e);
+                    return;
+                }
+            }
+        } else {
+            Stdio::inherit()
+        };
+
         if BUILTINS.contains(&cmd.as_str()) {
             if let Some(output) = run_builtin(cmd, cmd_args.to_vec()) {
                 print!("{}", output);
             }
-        } else if let Some(_path) = executables.get(cmd.as_str()) {
-            // let mut child = Child::new();
-            // let mut stdio = Stdio::new();
-        } else {
-            print!("{}: command not found\n", cmd);
+            continue;
+        }
+
+        match Command::new(&cmd)
+            .args(cmd_args)
+            .stdin(stdin)
+            .stdout(stdout)
+            .stderr(Stdio::inherit())
+            .spawn()
+        {
+            Ok(mut child) => {
+                prev_stdout = child.stdout.take();
+                processes.push(child);
+            }
+            Err(_e) => {
+                eprintln!("{}: command not found", cmd);
+                return;
+            }
         }
     }
+
+    // Wait for all child processes
+    for mut child in processes {
+        if let Err(e) = child.wait() {
+            eprintln!("Process error: {}", e);
+        }
+    }
+
+    // Ensure stdout is flushed
+    io::stdout().flush().unwrap();
 }
 
 fn repl() {
     let mut stdout = io::stdout();
     let stdin = io::stdin();
-    print!("$ ");
-    stdout.flush().unwrap();
 
-    // Wait for user input
-    let mut command = String::new();
-    stdin.read_line(&mut command).unwrap();
+    loop {
+        print!("$ ");
+        stdout.flush().unwrap();
 
-    parse_command(command);
+        // Wait for user input
+        let mut command = String::new();
+        stdin.read_line(&mut command).unwrap();
 
-    repl();
+        parse_command(command);
+    }
 }
 
 fn main() {
