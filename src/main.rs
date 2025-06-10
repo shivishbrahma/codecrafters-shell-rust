@@ -61,7 +61,7 @@ fn run_builtin(cmd: String, args: Vec<String>) -> Option<String> {
             if let Some(dir) = args.get(0) {
                 let path = shellexpand::tilde(dir).to_string();
                 if let Err(_e) = env::set_current_dir(&path) {
-                    println!("{}", path);
+                    // println!("{}", path);
                     Some(format!("cd: {}: No such file or directory\n", dir))
                 } else {
                     None
