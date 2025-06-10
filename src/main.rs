@@ -1,4 +1,3 @@
-use dirs::home_dir;
 use std::collections::{HashMap, VecDeque};
 use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
@@ -60,15 +59,9 @@ fn run_builtin(cmd: String, args: Vec<String>) -> Option<String> {
         }),
         "cd" => {
             if let Some(dir) = args.get(0) {
-                let path = home_dir()
-                    .map(|mut d| {
-                        d.push(&dir);
-                        d
-                    })
-                    .unwrap()
-                    .display()
-                    .to_string();
+                let path = shellexpand::tilde(dir).to_string();
                 if let Err(_e) = env::set_current_dir(&path) {
+                    println!("{}", path);
                     Some(format!("cd: {}: No such file or directory\n", dir))
                 } else {
                     None
