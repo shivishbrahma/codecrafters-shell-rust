@@ -68,8 +68,8 @@ fn run_builtin(cmd: String, args: Vec<String>) -> Option<String> {
                     .unwrap()
                     .display()
                     .to_string();
-                if let Err(e) = env::set_current_dir(&path) {
-                    Some(format!("cd: {}: {}\n", dir, e))
+                if let Err(_e) = env::set_current_dir(&path) {
+                    Some(format!("cd: {}: No such file or directory\n", dir))
                 } else {
                     None
                 }
